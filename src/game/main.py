@@ -34,7 +34,8 @@ class VetoPrompt:
 class Game:
     """Main game class that integrates environment, agent, and veto mechanism"""
     def __init__(self, env=None, headless=False, session_id=None, log_dir=None, condition=None, 
-                 uncertainty_threshold=0.7, enable_distributional=True, enable_attention=True):
+                 uncertainty_threshold=0.7, enable_distributional=True, enable_attention=True,
+                 logger=None):
         """
         Initialize the Game
         
@@ -47,6 +48,7 @@ class Game:
             uncertainty_threshold: Threshold for veto decisions
             enable_distributional: Whether to use distributional RL
             enable_attention: Whether to use attention mechanisms
+            logger: Optional pre-initialized ExperimentLogger instance
         """
         self.headless = headless
         self.session_id = session_id or str(uuid.uuid4())
@@ -61,27 +63,20 @@ class Game:
         self.verbose = False  # Enable verbose logging
         
         # Logger setup
-        self.logger = self._setup_logger()
+        self.logger = logger or self._setup_logger()
         
         # Environment setup
         self.env = env or GameEnvironment()
         
         # AI agent setup
         self.rl_agent = RLAgent(
-            self.env.state_size, 
-            self.env.action_space_n,
-            distributional=enable_distributional,
-            uncertainty_driven=True,
-            num_atoms=51,
-            v_min=-10,
-            v_max=10
+            self.env.state_size,
+            self.env.action_space_n
         )
         
         # Uncertainty estimator
         self.uncertainty_estimator = UncertaintyEstimator(
-            self.rl_agent.model, 
-            self.env.action_space_n,
-            distributional=enable_distributional,
+            self.rl_agent.model,
             mc_dropout_samples=10
         )
         
@@ -94,8 +89,14 @@ class Game:
         # Game state
         self.reset()
         
-        # Data collection
-        if log_dir:
+        # Data collection - Use the main logger instance
+        # The DataCollector wrapper might still be useful if other parts expect it
+        if self.logger and isinstance(self.logger, ExperimentLogger):
+            # Ensure the DataCollector uses the passed logger's session data
+            self.data_collector = DataCollector(self.logger.session_data['participant_id'], self.logger.output_dir)
+            self.data_collector.logger = self.logger # Directly assign the logger
+        elif log_dir:
+            # Fallback: create new if no logger passed but log_dir specified
             self.data_collector = DataCollector(session_id, log_dir)
         else:
             self.data_collector = None

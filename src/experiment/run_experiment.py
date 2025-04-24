@@ -77,11 +77,14 @@ def run_experiment_for_participant(participant_id, conditions, scenarios, experi
         logger.start_session(participant_id, condition)
         print(f"  Condition: {condition}")
         
-        # Create appropriate veto mechanism
+        # Create appropriate veto mechanism OR set to None for baseline
+        veto_mechanism = None
         if condition == "threshold":
             veto_mechanism = ThresholdVetoMechanism(timeout=10)
         elif condition == "uncertainty":
             veto_mechanism = UncertaintyVetoMechanism(uncertainty_estimator, timeout=10)
+        elif condition == 'baseline':
+            pass # No veto mechanism needed for baseline
         else:
             raise ValueError(f"Unknown condition: {condition}")
         
@@ -90,19 +93,19 @@ def run_experiment_for_participant(participant_id, conditions, scenarios, experi
             print(f"    Scenario: {scenario.name}")
             
             # Apply scenario to environment
-            env = scenario.apply_to_environment(env)
+            current_env = scenario.apply_to_environment(env)
             
             # Create game instance
             game = Game(
-                grid_size=env.grid_size,
-                window_width=1200 if not headless else 100,
-                window_height=900 if not headless else 100,
-                seed=scenario.seed,
-                veto_mechanism=condition,
-                veto_timeout=10,
-                experiment_id=experiment_id,
-                headless=headless
+                env=current_env,
+                headless=headless,
+                session_id=f"{participant_id}_{condition}_{scenario.name}",
+                log_dir=f"data/experiment_results/{experiment_id}/logs",
+                condition=condition,
+                uncertainty_threshold=0.7,
+                logger=logger
             )
+            game.veto = veto_mechanism # Explicitly set the veto mechanism on the game instance
             
             # Run game for this scenario
             # In headless mode, run for fixed number of steps
@@ -116,33 +119,65 @@ def run_experiment_for_participant(participant_id, conditions, scenarios, experi
                 for step in range(max_steps):
                     # Select action using AI
                     action, q_values = game.rl_agent.select_action(state)
-                    
-                    # Check for veto
-                    need_veto, reasoning, risk_reason = game.veto.assess_action(state, action, q_values)
-                    
-                    if need_veto:
-                        # In headless mode, simulate random veto decision
-                        vetoed = random.random() < 0.3  # 30% chance of veto
-                        
-                        # Log veto
-                        if game.logger:
-                            game.logger.log_veto({
-                                'original_action': action,
-                                'vetoed': vetoed,
-                                'alternative': None if not vetoed else random.randint(0, env.action_space_n - 1),
-                                'simulated': True
-                            })
-                            
-                        if vetoed:
-                            # Select alternative action
-                            action = random.randint(0, env.action_space_n - 1)
-                    
-                    # Execute action - this will log the action through the game's logger
-                    next_state, reward, done, info = game.env.step(action)
-                    
-                    # Let the game handle the action (including logging)
-                    next_state = game._execute_action(action, state)
-                    
+                    final_action = action
+                    veto_decision = None # Initialize veto_decision
+                    vetoed = False       # Default to not vetoed
+
+                    # Check for veto only if condition is not baseline and veto mechanism exists
+                    if condition != 'baseline' and game.veto:
+                        veto_decision = game.veto.assess_action(state, action, q_values)
+
+                        if veto_decision.vetoed:
+                            # In headless mode, simulate random veto decision
+                            vetoed = random.random() < 0.3  # 30% chance of veto
+
+                            if vetoed:
+                                # Select alternative action (simple random for headless)
+                                alternative_action = random.randint(0, game.env.action_space_n - 1)
+                                final_action = alternative_action
+                            else:
+                                alternative_action = None # Veto assessed but not applied
+
+                            # Log veto decision (only if veto occurred)
+                            if game.logger:
+                                # Use ExperimentLogger directly if available
+                                if hasattr(game, 'data_collector') and game.data_collector:
+                                    game.data_collector.log_veto({
+                                        'original_action': action,
+                                        'vetoed': vetoed,
+                                        'alternative': alternative_action,
+                                        'simulated': True,
+                                        'reason': veto_decision.reason,
+                                        'risk_reason': veto_decision.risk_reason,
+                                        'uncertainty': veto_decision.uncertainty,
+                                        'threshold': veto_decision.threshold
+                                    })
+                                # Fallback to the basic logger if needed
+                                else:
+                                    game.logger.log_veto({
+                                        'original_action': action,
+                                        'vetoed': vetoed,
+                                        'alternative': alternative_action,
+                                        'simulated': True
+                                    })
+
+                    # Execute the final action in the environment
+                    next_state, reward, done, info = game.env.step(final_action)
+
+                    # Log the executed action and outcome using DataCollector
+                    if hasattr(game, 'data_collector') and game.data_collector:
+                        game.data_collector.log_action(
+                            action=final_action,
+                            state=state, # Log the state *before* the action
+                            next_state=next_state,
+                            reward=reward,
+                            done=done,
+                            info=info,
+                            q_values=q_values.tolist() if q_values is not None else None, # Convert numpy array
+                            veto_applied=veto_decision.vetoed if veto_decision else False
+                        )
+
+                    # Update state for the next iteration
                     state = next_state
                     
                     if done:
@@ -159,15 +194,15 @@ def run_experiment_for_participant(participant_id, conditions, scenarios, experi
 def main():
     parser = argparse.ArgumentParser(description='Run experiment for Veto Game')
     parser.add_argument('--participants', type=int, default=1, help='Number of participants')
-    parser.add_argument('--conditions', nargs='+', default=['threshold', 'uncertainty'], 
-                      help='Conditions to test (threshold, uncertainty)')
+    parser.add_argument('--conditions', nargs='+', default=['baseline', 'threshold', 'uncertainty'],
+                      help='Conditions to test (baseline, threshold, uncertainty)')
     parser.add_argument('--headless', action='store_true', help='Run in headless mode')
     parser.add_argument('--experiment_id', type=str, default=None, help='Experiment ID (default: auto-generated)')
     
     args = parser.parse_args()
     
     # Validate conditions
-    valid_conditions = {'threshold', 'uncertainty'}
+    valid_conditions = {'baseline', 'threshold', 'uncertainty'}
     for condition in args.conditions:
         if condition not in valid_conditions:
             print(f"Error: Unknown condition '{condition}'. Valid conditions are: {', '.join(valid_conditions)}")

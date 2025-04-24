@@ -245,24 +245,35 @@ class ImprovedExperiment:
         # Initialize power analysis
         power_analysis = TTestIndPower()
         
-        # Calculate power
-        power = power_analysis.solve_power(
-            effect_size=self.power_analysis["effect_size"],
-            nobs1=num_participants // 2,  # Assuming equal group sizes
-            alpha=self.power_analysis["alpha"]
-        )
-        
-        # Calculate required sample size for target power
-        sample_size = power_analysis.solve_power(
-            effect_size=self.power_analysis["effect_size"],
-            power=self.power_analysis["target_power"],
-            alpha=self.power_analysis["alpha"],
-            ratio=1.0  # Equal group sizes
-        )
+        # Check if sample size is sufficient for power analysis (requires at least 1 per group)
+        if num_participants < 2:
+            print(f"Warning: Not enough participants ({num_participants}) for power analysis. Skipping.")
+            power = np.nan
+            sample_size = np.nan
+        else:
+            nobs1 = num_participants // 2 
+            # Ensure nobs1 is at least 1, although num_participants < 2 check should cover this
+            if nobs1 == 0: 
+                 nobs1 = 1 # Should not happen if num_participants >= 2
+            
+            # Calculate power
+            power = power_analysis.solve_power(
+                effect_size=self.power_analysis["effect_size"],
+                nobs1=nobs1,  # Use calculated nobs1
+                alpha=self.power_analysis["alpha"]
+            )
+            
+            # Calculate required sample size for target power
+            sample_size = power_analysis.solve_power(
+                effect_size=self.power_analysis["effect_size"],
+                power=self.power_analysis["target_power"],
+                alpha=self.power_analysis["alpha"],
+                ratio=1.0  # Equal group sizes
+            )
         
         # Update power analysis results
         self.power_analysis["estimated_power"] = power
-        self.power_analysis["recommended_sample_size"] = int(np.ceil(sample_size * 2))
+        self.power_analysis["recommended_sample_size"] = int(np.ceil(sample_size * 2)) if not np.isnan(sample_size) else np.nan
         self.power_analysis["current_sample_size"] = num_participants
         
         # Save to config
@@ -778,8 +789,14 @@ class ImprovedExperiment:
         
     def _generate_analysis_visualizations(self, actions_df, vetos_df, condition_metrics, output_dir):
         """Generate analysis visualizations"""
-        # 1. Reward by condition
-        if "reward_by_condition" in condition_metrics and not actions_df.empty:
+        # Calculate veto rate by condition first to avoid reference error
+        if not vetos_df.empty:
+            veto_rate_by_condition = vetos_df.groupby('condition')['vetoed'].mean()
+        else:
+            veto_rate_by_condition = pd.Series(dtype=float)
+
+        # 1. Veto rate by condition
+        if not vetos_df.empty and not veto_rate_by_condition.empty:
             plt.figure(figsize=(10, 6))
             veto_rate_by_condition.plot(kind='bar')
             plt.title("Veto Rate by Condition")
@@ -789,31 +806,9 @@ class ImprovedExperiment:
             plt.savefig(os.path.join(output_dir, "veto_rate_by_condition.png"))
             plt.close()
             
-        # 4. Distribution of rewards by condition
-        if not actions_df.empty:
+        # 2. Reward by condition
+        if "reward_by_condition" in condition_metrics and not actions_df.empty:
             plt.figure(figsize=(12, 6))
-            sns.boxplot(data=actions_df, x="condition", y="reward")
-            plt.title("Distribution of Rewards by Condition")
-            plt.tight_layout()
-            plt.savefig(os.path.join(output_dir, "reward_distribution.png"))
-            plt.close()
-            
-            # 5. Successful veto ratio by condition
-            if not vetos_df.empty and 'reward' in vetos_df.columns:
-                # Calculate successful veto ratio (vetoes that led to positive rewards)
-                vetos_df['successful'] = (vetos_df['vetoed'] == True) & (vetos_df['reward'] > 0)
-                
-                # Create summary
-                successful_vetos = vetos_df[vetos_df['vetoed'] == True].groupby('condition')['successful'].mean()
-                
-                plt.figure(figsize=(10, 6))
-                successful_vetos.plot(kind='bar')
-                plt.title("Successful Veto Ratio by Condition")
-                plt.ylabel("Success Rate")
-                plt.ylim(0, 1)
-                plt.tight_layout()
-                plt.savefig(os.path.join(output_dir, "successful_veto_ratio.png"))
-                plt.close()
             sns.barplot(data=actions_df, x="condition", y="reward", ci=68)
             plt.title("Average Reward by Condition")
             plt.ylabel("Reward")
@@ -821,7 +816,7 @@ class ImprovedExperiment:
             plt.savefig(os.path.join(output_dir, "reward_by_condition.png"))
             plt.close()
             
-        # 2. Veto effectiveness
+        # 3. Veto effectiveness
         if not vetos_df.empty and 'reward' in vetos_df.columns:
             plt.figure(figsize=(8, 6))
             sns.barplot(data=vetos_df, x="vetoed", y="reward", ci=68)
@@ -833,8 +828,28 @@ class ImprovedExperiment:
             plt.savefig(os.path.join(output_dir, "veto_effectiveness.png"))
             plt.close()
             
-        # 3. Veto rate by condition
-        if not vetos_df.empty:
-            veto_rate_by_condition = vetos_df.groupby('condition')['vetoed'].mean()
+        # 4. Distribution of rewards by condition
+        if not actions_df.empty:
+            plt.figure(figsize=(12, 6))
+            sns.boxplot(data=actions_df, x="condition", y="reward")
+            plt.title("Distribution of Rewards by Condition")
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_dir, "reward_distribution.png"))
+            plt.close()
+            
+        # 5. Successful veto ratio by condition
+        if not vetos_df.empty and 'reward' in vetos_df.columns:
+            # Calculate successful veto ratio (vetoes that led to positive rewards)
+            vetos_df['successful'] = (vetos_df['vetoed'] == True) & (vetos_df['reward'] > 0)
+            
+            # Create summary
+            successful_vetos = vetos_df[vetos_df['vetoed'] == True].groupby('condition')['successful'].mean()
             
             plt.figure(figsize=(10, 6))
+            successful_vetos.plot(kind='bar')
+            plt.title("Successful Veto Ratio by Condition")
+            plt.ylabel("Success Rate")
+            plt.ylim(0, 1)
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_dir, "successful_veto_ratio.png"))
+            plt.close()

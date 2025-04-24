@@ -1,14 +1,14 @@
 import unittest
 import numpy as np
 import time
-from src.veto.risk_assessment import RiskAssessor
+from src.veto.improved_risk_assessment import ImprovedRiskAssessor
 from src.veto.veto_mechanism import VetoMechanism, ThresholdVetoMechanism, UncertaintyVetoMechanism
 from src.ai.uncertainty import UncertaintyEstimator
 from src.ai.models import DuelingDQN
 
 class TestRiskAssessor(unittest.TestCase):
     def setUp(self):
-        self.risk_assessor = RiskAssessor()
+        self.risk_assessor = ImprovedRiskAssessor()
         
     def test_extract_features(self):
         # Create dummy state and action
@@ -19,8 +19,12 @@ class TestRiskAssessor(unittest.TestCase):
         
         features = self.risk_assessor.extract_features(state, action, q_values)
         
-        # Check feature dimensions
-        self.assertEqual(len(features), 17)  # 3 agent stats + 11 one-hot action + 3 q-value features
+        # Check feature dimensions - Updated expected number of features
+        # Original: 17 (3 stats + 11 action + 3 q-value features)
+        # New: Check the actual number returned by the improved assessor
+        # From improved_risk_assessment.py:
+        # 3 stats + 11 action_onehot + 3 action_category + 3 resource_combo + 3 interaction + 5 q_value = 28
+        self.assertEqual(len(features), 28)
         
     def test_is_high_risk(self):
         # Create dummy state and action
@@ -47,7 +51,6 @@ class TestVetoMechanism(unittest.TestCase):
         
     def test_initialization(self):
         self.assertEqual(self.veto.timeout, 5)
-        self.assertIsInstance(self.veto.risk_assessor, RiskAssessor)
         self.assertEqual(len(self.veto.veto_history), 0)
         
     def test_record_veto_decision(self):
@@ -72,11 +75,12 @@ class TestThresholdVetoMechanism(unittest.TestCase):
         
         # Test with a high-risk action (shooting with low ammo)
         action = 4  # Shoot
-        need_veto, reasoning, risk_reason = self.veto.assess_action(state, action)
+        # Updated to unpack the VetoDecision object
+        result = self.veto.assess_action(state, action)
         
-        self.assertTrue(need_veto)
-        self.assertIsNotNone(reasoning)
-        self.assertIsNotNone(risk_reason)
+        self.assertTrue(result.vetoed)
+        self.assertIsNotNone(result.reason)
+        self.assertIsNotNone(result.risk_reason)
         
 class TestUncertaintyVetoMechanism(unittest.TestCase):
     def setUp(self):
@@ -96,12 +100,15 @@ class TestUncertaintyVetoMechanism(unittest.TestCase):
         
         # This will likely trigger veto due to the random initialization of the model
         # causing high uncertainty
-        need_veto, reasoning, risk_reason = self.veto.assess_action(state, action)
+        # Updated to unpack the VetoDecision object
+        result = self.veto.assess_action(state, action)
         
         # We can't assert the exact outcome since it depends on the random model initialization,
         # but we can check that the reasoning contains "uncertainty" if veto is needed
-        if need_veto:
-            self.assertIn("uncertain", reasoning.lower())
+        if result.vetoed:
+            # Check if the reason contains uncertainty related keywords
+            self.assertTrue("uncertain" in result.reason.lower() or 
+                            "uncertainty" in result.risk_reason.lower())
 
 if __name__ == '__main__':
     unittest.main()

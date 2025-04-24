@@ -209,12 +209,12 @@ class ExperimentBehaviorTest(unittest.TestCase):
         
         # Run abbreviated experiment (mock components to speedup test)
         # Override _run_scenario to do minimal work
-        original_run_scenario = experiment._run_scenario
+        # original_run_scenario = experiment._run_scenario # Removed mocking
         
-        def mock_run_scenario(*args, **kwargs):
-            return {"total_reward": 10, "total_steps": 5, "veto_count": 2, "successful_vetos": 1}
+        # def mock_run_scenario(*args, **kwargs):
+        #     return {"total_reward": 10, "total_steps": 5, "veto_count": 2, "successful_vetos": 1}
             
-        experiment._run_scenario = mock_run_scenario
+        # experiment._run_scenario = mock_run_scenario # Removed mocking
         
         try:
             # Run experiment
@@ -232,7 +232,8 @@ class ExperimentBehaviorTest(unittest.TestCase):
             self.assertGreater(len(session_files), 0)
         finally:
             # Restore original method
-            experiment._run_scenario = original_run_scenario
+            # experiment._run_scenario = original_run_scenario # No longer needed
+            pass # No cleanup needed if not mocking
     
     def test_analysis_functionality(self):
         """Test experiment analysis functionality."""

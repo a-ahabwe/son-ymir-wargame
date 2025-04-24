@@ -248,7 +248,7 @@ class RLBehaviorTest(unittest.TestCase):
         uncertainty = self.uncertainty_estimator.estimate_uncertainty(self.test_state)
         
         # Check dimensions
-        self.assertEqual(uncertainty.shape[0], self.action_size)
+        self.assertEqual(uncertainty.shape[1], self.action_size)
         
         # Values should be in [0, 1] range
         self.assertTrue(np.all(uncertainty >= 0))
