@@ -33,6 +33,10 @@ ENV/
 .DS_Store
 
 # Project specific
+# Ignore the entire data directory by default - use ! to un-ignore specific files
+data/
+
+# Specific data/output folders
 data/logs/
 data/viz/
 data/risk_model
@@ -66,6 +70,7 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.pytest_cache/
 
 # Environments
 .env
