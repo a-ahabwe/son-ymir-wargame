@@ -35,6 +35,7 @@ ENV/
 # Project specific
 data/logs/
 data/viz/
+data/risk_model
 data/trained_models/
 data/experiment_results/
 *.pt
