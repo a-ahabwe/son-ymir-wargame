@@ -25,5 +25,5 @@ This project explores:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/veto-game.git
+git clone https://github.com/mutsinzi/son-ymir.git
 cd veto-game
