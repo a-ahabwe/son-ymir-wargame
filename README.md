@@ -25,5 +25,5 @@ This project explores:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/mutsinzi/son-ymir.git
+git clone https://github.com/a-ahabwe/son-ymir-wargame.git
 cd veto-game
