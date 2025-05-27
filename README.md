@@ -26,4 +26,13 @@ This project explores:
 1. Clone the repository:
 ```bash
 git clone https://github.com/a-ahabwe/son-ymir-wargame.git
-cd veto-game
+cd son-ymir-wargame
+chmod +x run_improved_game.sh
+./run_improved_game.sh
+```
+Or if you are using Windows
+```bash
+git clone https://github.com/a-ahabwe/son-ymir-wargame.git
+cd son-ymir-wargame
+bash run_improved_game.sh
+```
